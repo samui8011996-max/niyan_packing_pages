@@ -65,6 +65,7 @@ async function handle(DB, action, p) {
     case 'addPlatform':      return addPlatform(DB, p);
     case 'updatePlatform':   return updatePlatform(DB, p);
     case 'deletePlatform':   return deletePlatform(DB, p);
+    case 'upsertPlatform':   return upsertPlatform(DB, p);
     case 'addScrap':         return addScrap(DB, p);
     case 'deleteScrap':      return deleteScrap(DB, p);
     case 'addSetting':       return addSetting(DB, p);
@@ -172,6 +173,41 @@ async function updatePlatform(DB, p) {
 async function deletePlatform(DB, p) {
   await DB.prepare('DELETE FROM platform_orders WHERE id=?').bind(p.id).run();
   return { id: p.id };
+}
+
+// 出貨小幫手(niyan_shipping)呼叫：當天同平台已有紀錄就把件數累加進對應物流，沒有就新增一筆
+async function upsertPlatform(DB, p) {
+  const date = String(p.date || '').trim();
+  const platform = String(p.platform || '').trim();
+  const logi = String(p.logi || '').trim();
+  const qty = Number(p.qty) || 0;
+  if (!date || !platform || qty <= 0) return { ok: true, skipped: true, updated: false, total: 0 };
+
+  const existing = await DB.prepare(
+    'SELECT * FROM platform_orders WHERE "日期"=? AND "平台"=? LIMIT 1'
+  ).bind(date, platform).first();
+
+  if (!existing) {
+    const id = newId('L'), n = now();
+    const detail = logi ? [{ 物流: logi, 件數: qty }] : [];
+    await DB.prepare(
+      'INSERT INTO platform_orders (id,"日期","平台","明細","總件數","已完成","完成日期","備註","建立時間","更新時間","來源平台","完成物流") VALUES (?,?,?,?,?,?,?,?,?,?,?,?)'
+    ).bind(id, date, platform, JSON.stringify(detail), qty, '', '', '', n, n, '', '').run();
+    return { updated: false, total: qty, id };
+  }
+
+  const detail = jparse(existing['明細']);
+  let found = false;
+  const newDetail = detail.map(d => {
+    if (logi && d['物流'] === logi) { found = true; return { ...d, 件數: (Number(d['件數']) || 0) + qty }; }
+    return d;
+  });
+  if (!found) newDetail.push(logi ? { 物流: logi, 件數: qty } : { 件數: qty });
+  const total = newDetail.reduce((s, d) => s + (Number(d['件數']) || 0), 0);
+  const n = now();
+  await DB.prepare('UPDATE platform_orders SET "明細"=?,"總件數"=?,"更新時間"=? WHERE id=?')
+    .bind(JSON.stringify(newDetail), total, n, existing.id).run();
+  return { updated: true, total, id: existing.id };
 }
 
 /* ---------- 報廢 ---------- */
