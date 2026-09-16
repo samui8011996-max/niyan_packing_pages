@@ -177,10 +177,10 @@ async function deletePlatform(DB, p) {
 
 // 出貨小幫手(niyan_shipping)呼叫：當天同平台已有紀錄就把件數累加進對應物流，沒有就新增一筆
 async function upsertPlatform(DB, p) {
-  const date = String(p.date || '').trim();
-  const platform = String(p.platform || '').trim();
-  const logi = String(p.logi || '').trim();
-  const qty = Number(p.qty) || 0;
+  const date = String(p['日期'] || '').trim();
+  const platform = String(p['平台'] || '').trim();
+  const logi = String(p['物流'] || '').trim();
+  const qty = Number(p['件數']) || 0;
   if (!date || !platform || qty <= 0) return { ok: true, skipped: true, updated: false, total: 0 };
 
   const existing = await DB.prepare(
