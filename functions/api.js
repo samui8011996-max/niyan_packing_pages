@@ -154,8 +154,8 @@ async function addPlatform(DB, p) {
   const id = newId('L'), n = now();
   const detail = Array.isArray(p['明細']) ? JSON.stringify(p['明細']) : (p['明細'] || '');
   await DB.prepare(
-    'INSERT INTO platform_orders (id,"日期","平台","明細","總件數","已完成","完成日期","備註","建立時間","更新時間","來源平台","完成物流") VALUES (?,?,?,?,?,?,?,?,?,?,?,?)'
-  ).bind(id, p['日期']||'', p['平台']||'', detail, Number(p['總件數'])||0, p['已完成']?'TRUE':'', p['完成日期']||'', p['備註']||'', n, n, p['來源平台']||'', p['完成物流']||'').run();
+    'INSERT INTO platform_orders (id,"日期","平台","明細","總件數","已完成","完成日期","備註","建立時間","更新時間","來源平台","完成物流","不扣今日") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)'
+  ).bind(id, p['日期']||'', p['平台']||'', detail, Number(p['總件數'])||0, p['已完成']?'TRUE':'', p['完成日期']||'', p['備註']||'', n, n, p['來源平台']||'', p['完成物流']||'', p['不扣今日']?'TRUE':'').run();
   return { id };
 }
 async function updatePlatform(DB, p) {
@@ -165,6 +165,7 @@ async function updatePlatform(DB, p) {
   }
   if (has(p, '明細')) { sets.push('"明細"=?'); vals.push(Array.isArray(p['明細']) ? JSON.stringify(p['明細']) : p['明細']); }
   if (has(p, '已完成')) { sets.push('"已完成"=?'); vals.push(p['已完成'] ? 'TRUE' : ''); }
+  if (has(p, '不扣今日')) { sets.push('"不扣今日"=?'); vals.push(p['不扣今日'] ? 'TRUE' : ''); }
   sets.push('"更新時間"=?'); vals.push(now());
   vals.push(p.id);
   await DB.prepare(`UPDATE platform_orders SET ${sets.join(',')} WHERE id=?`).bind(...vals).run();

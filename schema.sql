@@ -40,7 +40,8 @@ CREATE TABLE platform_orders (
   "建立時間" TEXT,
   "更新時間" TEXT,
   "來源平台" TEXT,
-  "完成物流" TEXT
+  "完成物流" TEXT,
+  "不扣今日" TEXT
 );
 
 DROP TABLE IF EXISTS scraps;
