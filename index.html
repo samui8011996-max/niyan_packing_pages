@@ -2271,7 +2271,7 @@ function renderResendBoard() {
     return `
        <div class="pf-card ${done ? 'done' : ''}" data-resend-id="${rec.id}" data-platform="補寄" style="cursor:pointer;">
         <div class="pf-platform">
-          <span>補寄</span>
+          <span>補寄${safeText(rec['來源平台']) ? ' · ' + escapeHtml(safeText(rec['來源平台'])) : ''}</span>
           <span class="pf-tag" style="background:#d98a3e;">${fmtDate(rec['日期'])||''}</span>
         </div>
         <div class="pf-details">${detailHtml}</div>
@@ -5005,6 +5005,15 @@ const numButtons = `
         
           ${!DEFAULT_PLATFORM_ORDER.includes(name) ? `<button type="button" class="pf-del-platform" data-del-platform="${escapeAttr(name)}" title="刪除平台">×</button>` : ''}
         </div>
+        ${name === '補寄' ? `
+        <div class="field" style="margin-bottom:12px;">
+          <label>來源平台</label>
+          <select class="pf-source-platform" data-pf="補寄">
+            <option value="">—</option>
+            ${getPlatformOrder().filter(n => n !== '補寄' && n !== '未出貨')
+              .map(n => `<option value="${escapeAttr(n)}" ${existing && safeText(existing['來源平台']) === n ? 'selected' : ''}>${escapeHtml(n)}</option>`).join('')}
+          </select>
+        </div>` : ''}
         <div class="pf-inputs">${inputs}</div>
         <div class="pf-form-note">
           <input type="text" class="pf-note-input" data-pf="${escapeAttr(name)}" placeholder="平台備註" value="${escapeAttr(noteVal)}">
@@ -5248,7 +5257,12 @@ $('#pSubmit').addEventListener('click', async () => {
     const noteInp = document.querySelector(`.pf-note-input[data-pf="${cssEscape(name)}"]`);
     const note    = noteInp ? noteInp.value.trim() : '';
     if (total > 0 || note) {
-      items.push({ 平台: name, 明細: detail, 總件數: total, 備註: note });
+      const item = { 平台: name, 明細: detail, 總件數: total, 備註: note };
+      if (name === '補寄') {
+        const srcSel = document.querySelector('.pf-source-platform[data-pf="補寄"]');
+        item.來源平台 = srcSel ? srcSel.value : '';
+      }
+      items.push(item);
     }
   });
 
@@ -5268,7 +5282,9 @@ $('#pSubmit').addEventListener('click', async () => {
         ? null
         : state.platforms.find(p => fmtDate(p['日期']) === date && p['平台'] === item.平台);
       if (exist) {
-        await api('updatePlatform', { id: exist.id, '明細': item.明細, '總件數': item.總件數, '備註': note });
+        const payload = { id: exist.id, '明細': item.明細, '總件數': item.總件數, '備註': note };
+        if (item.平台 === '補寄') payload['來源平台'] = item.來源平台 || '';
+        await api('updatePlatform', payload);
         updated++;
       } else {
         await api('addPlatform', { '日期': date, '平台': item.平台, '明細': item.明細, '總件數': item.總件數, '備註': note, '來源平台': item.來源平台 || '' });
