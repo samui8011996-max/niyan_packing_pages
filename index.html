@@ -1419,6 +1419,15 @@ z-index: 10;
         <div class="pf-grid" id="unsentList"></div>
       </div>
 
+      <div class="card" id="resendCard" style="display:none;">
+        <span class="tape t-yellow">pending ✦ 補 寄</span>
+        <div class="card-title">
+          <span class="dot"></span>
+          <span>補 寄</span>
+        </div>
+        <div class="pf-grid" id="resendList"></div>
+      </div>
+
 
       <div class="card">
         <span class="tape t-cream">today ✦ 今 日 平 台 單</span>
@@ -1807,8 +1816,8 @@ const DEFAULT_PLATFORM_LOGISTICS = {
 
 const DEFAULT_PLATFORM_ORDER = ['Line禮物','蝦皮','Pinkoi','瑪黑','官網','博客來','MO+','酷澎','補寄','離島•郵局','未出貨'];
 
-// 未出貨在「今日平台」一般卡片清單中特殊處理，不走一般迴圈
-const SPECIAL_PLATFORMS = ['未出貨'];
+// 未出貨、補寄在「今日平台」一般卡片清單中特殊處理，不走一般迴圈
+const SPECIAL_PLATFORMS = ['未出貨', '補寄'];
 function getBoardPlatformOrder() {
   return getPlatformOrder().filter(n => !SPECIAL_PLATFORMS.includes(n));
 }
@@ -2012,8 +2021,8 @@ function computeTodayLogi() {
   const today = todayStr();
   let blackcat = 0, cvs = 0, post = 0, hct = 0;
   const others = {};
-  // 今日所有平台（未出貨不在此累計，改用扣除）
-  state.platforms.filter(p => fmtDate(p['日期']) === today && p['平台'] !== '未出貨').forEach(p => {
+  // 今日所有平台（未出貨不在此累計，改用扣除；補寄不在此累計，改用完成當日加回）
+  state.platforms.filter(p => fmtDate(p['日期']) === today && p['平台'] !== '未出貨' && p['平台'] !== '補寄').forEach(p => {
     (Array.isArray(p['明細']) ? p['明細'] : []).forEach(d => {
       const logi = String(d.物流 || '').trim();
       const qty  = Number(d.件數) || 0;
@@ -2055,6 +2064,24 @@ function computeTodayLogi() {
     else if (logi.includes('超商'))             cvs += qty;
     else if (logi === '新竹物流')               hct += qty;
     else                                        others[logi] = (others[logi] || 0) + qty;
+  });
+
+  // 補寄【加回】：從不扣除，完成日=今天才用自己的明細加回今日物流總數
+  state.platforms.filter(p =>
+    p['平台'] === '補寄' &&
+    isDone(p['已完成']) &&
+    fmtDate(p['完成日期']) === today
+  ).forEach(p => {
+    (Array.isArray(p['明細']) ? p['明細'] : []).forEach(d => {
+      const logi = String(d.物流 || '').trim();
+      const qty  = Number(d.件數) || 0;
+      if (!qty) return;
+      if (logi === '黑貓' || logi === '蝦皮黑貓') blackcat += qty;
+      else if (logi === '郵局')                  post += qty;
+      else if (logi.includes('超商'))             cvs += qty;
+      else if (logi === '新竹物流')               hct += qty;
+      else                                        others[logi] = (others[logi] || 0) + qty;
+    });
   });
 
   return { blackcat, cvs, post, hct, others };
@@ -2217,6 +2244,86 @@ function renderUnsentBoard() {
     });
   });
 }
+/* 補寄卡片：不分天，未完成才顯示；從不扣今日，完成當天用自己的明細加回 */
+function renderResendBoard() {
+  const card = $('#resendCard');
+  const list = $('#resendList');
+  if (!card || !list) return;
+  const today = todayStr();
+  const items = state.platforms
+    .filter(p => {
+      if (p['平台'] !== '補寄') return false;
+      if (!isDone(p['已完成'])) return true;
+      return fmtDate(p['完成日期']) === today;
+    })
+    .sort((a,b) => (a['日期']||'').localeCompare(b['日期']||''));
+
+  if (!items.length) { card.style.display = 'none'; list.innerHTML = ''; return; }
+  card.style.display = '';
+
+  list.innerHTML = items.map(rec => {
+    const detail = Array.isArray(rec['明細']) ? rec['明細'] : [];
+    const detailHtml = detail.filter(d => Number(d.件數) > 0).map(d =>
+      `<div class="pf-line"><span>${escapeHtml(d.物流||'件數')}</span><b>${d.件數||0}</b></div>`
+    ).join('') || '<div style="text-align:center;padding:4px 0;font-size:12px;">無件數</div>';
+    const note = safeText(rec['備註']);
+    const done = isDone(rec['已完成']);
+    return `
+       <div class="pf-card ${done ? 'done' : ''}" data-resend-id="${rec.id}" data-platform="補寄" style="cursor:pointer;">
+        <div class="pf-platform">
+          <span>補寄</span>
+          <span class="pf-tag" style="background:#d98a3e;">${fmtDate(rec['日期'])||''}</span>
+        </div>
+        <div class="pf-details">${detailHtml}</div>
+        ${note ? `<div style="font-family:'Noto Sans TC','Noto Serif TC',serif;font-size:12px;color:var(--stamp-red);border-top:1px dotted var(--line);padding-top:6px;margin-bottom:6px;">📝 ${escapeHtml(note)}</div>` : ''}
+        <div class="pf-actions" style="flex-wrap:wrap;gap:6px;">
+          ${done
+            ? `<button class="btn small ghost" data-resend-undone="${rec.id}">取消完成</button>`
+            : `<button class="btn small primary" data-resend-done="${rec.id}" style="flex:1;">完成 ✓</button>`}
+         <button class="btn small ghost" data-resend-del="${rec.id}">刪除</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  list.querySelectorAll('[data-resend-done]').forEach(b => {
+    b.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      try {
+        await api('updatePlatform', { id: b.dataset.resendDone, '已完成': true, '完成日期': todayStr() });
+        toast('已完成');
+        await loadAll();
+      } catch (err) { toast(err.message, true); }
+    });
+  });
+  list.querySelectorAll('[data-resend-undone]').forEach(b => {
+    b.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      try {
+        await api('updatePlatform', { id: b.dataset.resendUndone, '已完成': false, '完成日期': '' });
+        toast('已取消完成');
+        await loadAll();
+      } catch (err) { toast(err.message, true); }
+    });
+  });
+  list.querySelectorAll('[data-resend-del]').forEach(b => {
+    b.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!confirm('確定刪除此補寄紀錄？')) return;
+      try {
+        await api('deletePlatform', { id: b.dataset.resendDel });
+        toast('已刪除');
+        await loadAll();
+      } catch (err) { toast(err.message, true); }
+    });
+  });
+  list.querySelectorAll('[data-resend-id]').forEach(card => {
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('button') || e.target.closest('.pf-actions')) return;
+      const rec = state.platforms.find(x => x.id === card.dataset.resendId);
+      if (rec) openPlatformEdit(rec);
+    });
+  });
+}
 function itemDoneCount(orderId, it) {
   const 品項 = safeText(it['品項']);
   const 大小 = safeText(it['大小']);
@@ -2259,8 +2366,9 @@ function renderPlatformBoard() {
 
   renderTodayLogiSummary();
   renderUnsentBoard();
+  renderResendBoard();
 
-  const todayItems = state.platforms.filter(p => fmtDate(p['日期']) === today && p['平台'] !== '未出貨');
+  const todayItems = state.platforms.filter(p => fmtDate(p['日期']) === today && p['平台'] !== '未出貨' && p['平台'] !== '補寄');
   const byPlatform = {};
   todayItems.forEach(p => { byPlatform[p['平台']] = p; });
   // 今日有資料、但不在標準平台清單裡的平台（例如「其他」）也要顯示在公告
@@ -2439,6 +2547,7 @@ $('#pfBulkDone').addEventListener('click', async () => {
 const targets = state.platforms.filter(p =>
   fmtDate(p['日期']) === today &&
   p['平台'] !== '未出貨' &&
+  p['平台'] !== '補寄' &&
   !isDone(p['已完成']) &&
   !safeText(p['備註'])
 );
