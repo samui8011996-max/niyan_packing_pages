@@ -1352,52 +1352,6 @@ z-index: 10;
   }
   .logi-chip .logi-num { font-size: 24px; line-height: 1; min-width: 0; }
 }
-.switch-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  font-size: 13px;
-  color: var(--ink-soft);
-}
-.switch {
-  position: relative;
-  display: inline-block;
-  width: 40px;
-  height: 22px;
-  flex: none;
-}
-.switch input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-.switch-track {
-  position: absolute;
-  inset: 0;
-  background: var(--line-dark);
-  border-radius: 999px;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-.switch-track::before {
-  content: '';
-  position: absolute;
-  left: 2px;
-  top: 2px;
-  width: 18px;
-  height: 18px;
-  background: var(--paper);
-  border-radius: 50%;
-  transition: transform 0.2s;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
-}
-.switch input:checked + .switch-track {
-  background: var(--accent);
-}
-.switch input:checked + .switch-track::before {
-  transform: translateX(18px);
-}
 .corner-settings {
   position: absolute;
   top: 12px; right: 12px;
@@ -2072,11 +2026,9 @@ function computeTodayLogi() {
     });
   });
   // 未出貨【扣除】：建立日=今天 → 一律從今日扣除（不論完成與否，那幾件當天沒出）
-  // 但標記「不扣今日」的紀錄跳過，不參與扣除（也就不參與下面的加回）
   state.platforms.filter(p =>
     p['平台'] === '未出貨' &&
-    fmtDate(p['日期']) === today &&
-    !isDone(p['不扣今日'])
+    fmtDate(p['日期']) === today
   ).forEach(p => {
     (Array.isArray(p['明細']) ? p['明細'] : []).forEach(d => {
       const logi = String(d.物流 || '').trim();
@@ -2090,12 +2042,10 @@ function computeTodayLogi() {
   });
 
   // 未出貨【加回】：完成日=今天 → 加到「完成時選擇的物流」（黑貓 / 超商 / 郵局 / 新竹物流）
-  // 「不扣今日」的紀錄從未被扣過，完成時也不加回，否則會平白多算一次
   state.platforms.filter(p =>
     p['平台'] === '未出貨' &&
     isDone(p['已完成']) &&
-    fmtDate(p['完成日期']) === today &&
-    !isDone(p['不扣今日'])
+    fmtDate(p['完成日期']) === today
   ).forEach(p => {
     const qty  = Number(p['總件數']) || 0;
     if (!qty) return;
@@ -2117,8 +2067,7 @@ function unsentDeductFor(platformName, today) {
     p['平台'] === '未出貨' &&
     safeText(p['來源平台']) === platformName &&
     fmtDate(p['日期']) === today &&
-    !isDone(p['已完成']) &&
-    !isDone(p['不扣今日'])
+    !isDone(p['已完成'])
   ).forEach(p => {
     const detail = Array.isArray(p['明細']) ? p['明細'] : [];
     if (detail.length) {
@@ -2205,13 +2154,6 @@ function renderUnsentBoard() {
         </div>
         <div class="pf-details">${detailHtml}</div>
         ${note ? `<div style="font-family:'Noto Sans TC','Noto Serif TC',serif;font-size:12px;color:var(--stamp-red);border-top:1px dotted var(--line);padding-top:6px;margin-bottom:6px;">📝 ${escapeHtml(note)}</div>` : ''}
-        <label class="switch-row" style="margin-bottom:6px;" onclick="event.stopPropagation();">
-          <span>不從今日物流扣除</span>
-          <span class="switch">
-            <input type="checkbox" class="unsent-no-deduct-toggle" data-unsent-toggle="${rec.id}" ${isDone(rec['不扣今日']) ? 'checked' : ''}>
-            <span class="switch-track"></span>
-          </span>
-        </label>
         <div class="pf-actions" style="flex-wrap:wrap;gap:6px;">
           ${done
             ? `<span style="font-size:12px;color:var(--ink-soft);align-self:center;">完成物流：${escapeHtml(safeText(rec['完成物流'])||'黑貓')}</span>
@@ -2254,22 +2196,6 @@ function renderUnsentBoard() {
         toast('已取消完成');
         await loadAll();
       } catch (err) { toast(err.message, true); }
-    });
-  });
-  list.querySelectorAll('[data-unsent-toggle]').forEach(cb => {
-    cb.addEventListener('change', async (e) => {
-      e.stopPropagation();
-      const checked = cb.checked;
-      cb.disabled = true;
-      try {
-        await api('updatePlatform', { id: cb.dataset.unsentToggle, '不扣今日': checked });
-        toast(checked ? '已設定不從今日扣除' : '已恢復從今日扣除');
-        await loadAll();
-      } catch (err) {
-        toast(err.message, true);
-        cb.checked = !checked;
-        cb.disabled = false;
-      }
     });
   });
   list.querySelectorAll('[data-unsent-del]').forEach(b => {
@@ -4914,13 +4840,6 @@ function renderPlatformForm(force) {
           <label>未出貨平台</label>
           <select id="unsent_platform"><option value="">—</option>${platOpts}</select>
         </div>
-        <label class="switch-row" style="margin-bottom:12px;">
-          <span>不從今日物流扣除</span>
-          <span class="switch">
-            <input type="checkbox" id="unsent_no_deduct">
-            <span class="switch-track"></span>
-          </span>
-        </label>
         <div class="pf-inputs" id="unsent_logi_inputs">
           <div style="grid-column:1/-1;text-align:center;color:var(--ink-soft);font-size:13px;padding:8px 0;">請先選擇平台</div>
         </div>
@@ -5202,8 +5121,7 @@ $('#pSubmit').addEventListener('click', async () => {
       });
       if (total <= 0) return;
       const note = (document.querySelector('.pf-note-input[data-pf="未出貨"]')?.value || '').trim();
-      const noDeduct = !!document.getElementById('unsent_no_deduct')?.checked;
-      items.push({ 平台: '未出貨', 明細: detail, 總件數: total, 備註: note, 來源平台: srcPlatform, 不扣今日: noDeduct });
+      items.push({ 平台: '未出貨', 明細: detail, 總件數: total, 備註: note, 來源平台: srcPlatform });
       return;
     }
     const opts = getPlatformLogistics()[name] || [];
@@ -5244,7 +5162,7 @@ $('#pSubmit').addEventListener('click', async () => {
         await api('updatePlatform', { id: exist.id, '明細': item.明細, '總件數': item.總件數, '備註': note });
         updated++;
       } else {
-        await api('addPlatform', { '日期': date, '平台': item.平台, '明細': item.明細, '總件數': item.總件數, '備註': note, '來源平台': item.來源平台 || '', '不扣今日': item.不扣今日 || false });
+        await api('addPlatform', { '日期': date, '平台': item.平台, '明細': item.明細, '總件數': item.總件數, '備註': note, '來源平台': item.來源平台 || '' });
         added++;
       }
     }
@@ -5561,7 +5479,7 @@ document.getElementById('btnOpenTools').addEventListener('click', () => {
       ['日期', '日期'], ['平台', '平台'],
       ['明細', '明細', flattenList],
       ['總件數', '總件數'], ['已完成', '已完成'], ['完成日期', '完成日期'],
-      ['來源平台', '來源平台'], ['完成物流', '完成物流'], ['不扣今日', '不扣今日'],
+      ['來源平台', '來源平台'], ['完成物流', '完成物流'],
       ['備註', '備註'], ['建立時間', '建立時間'], ['更新時間', '更新時間'],
     ]), '平台單');
 
