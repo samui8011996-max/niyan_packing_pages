@@ -5328,8 +5328,26 @@ function openPlatformEdit(rec, platformName, overrideDate) {
 
   const currentDone = !isNew && isDone(rec['已完成']);
 
+  // 撿貨分組明細:出貨小幫手上傳 Line禮物件數時一起帶過來的(分區列印那份),
+  // 這裡只給看不給改 —— 要改是去改那邊的分組設定,不是在這裡手動修數字。
+  const picking = (!isNew && Array.isArray(rec['撿貨明細'])) ? rec['撿貨明細'] : [];
+  const pickingTotal = picking.reduce((sum, d) => sum + (Number(d['件數']) || 0), 0);
+  const pickingHtml = picking.length ? `
+    <div id="pfmPicking" style="margin-top:14px;padding:8px 10px;background:var(--paper-2);border-radius:8px;">
+      <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px;">
+        <span style="font-family:'Noto Serif TC',serif;font-size:12px;color:var(--ink-soft);">撿貨分組</span>
+        <span style="font-size:11px;color:var(--ink-soft);opacity:.7;">出貨小幫手帶過來的,共 ${pickingTotal} 件</span>
+      </div>
+      ${picking.map(d => `
+        <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;line-height:1.9;">
+          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(String(d['品項'] || ''))}</span>
+          <b style="flex:0 0 auto;">${Number(d['件數']) || 0}</b>
+        </div>`).join('')}
+    </div>` : '';
+
   $('#pfmBody').innerHTML = `
     <div class="form-grid">${detailHtml}</div>
+    ${pickingHtml}
     <div class="field" style="margin-top:12px;"><label>備註</label><textarea id="ef_note">${escapeHtml(isNew ? '' : safeText(rec['備註']))}</textarea></div>
     ${!isNew ? `
     <div style="margin-top:14px;padding:10px 12px;background:var(--paper-2);border-radius:8px;border-left:3px solid ${currentDone ? '#8aab74' : 'var(--accent)'};display:flex;align-items:center;gap:10px;flex-wrap:wrap;">

@@ -87,7 +87,12 @@ async function readAll(DB) {
     const items = jparse(o['品項']);
     return { ...o, items, '品項': (items[0] && items[0]['品項']) || '' };
   });
-  const platforms = (pf.results || []).map(x => ({ ...x, '明細': jparse(x['明細']) }));
+  const platforms = (pf.results || []).map(x => ({
+    ...x,
+    '明細': jparse(x['明細']),
+    // 出貨小幫手寫進來的撿貨分組,前端點字卡時顯示(唯讀)
+    '撿貨明細': jparse(x['撿貨明細']),
+  }));
   const scraps = (sc.results || []).map(x => ({ ...x, '明細': jparse(x['明細']) }));
   const settings = {};
   (st.results || []).forEach(r => {

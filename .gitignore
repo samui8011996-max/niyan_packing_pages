@@ -1,2 +1,8 @@
 .wrangler/
 node_modules/
+
+.vscode/
+
+# 測試/對帳用的實際出貨檔,含客戶姓名地址電話,一律不進 repo
+*.xlsx
+*.pdf
