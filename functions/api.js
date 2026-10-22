@@ -56,6 +56,7 @@ function boxVal(v) { return (v === '' || v == null) ? null : Number(v); }
 async function handle(DB, action, p) {
   switch (action) {
     case 'readAll':          return readAll(DB);
+    case 'fingerprint':      return fingerprint(DB);
     case 'addOrder':         return addOrder(DB, p);
     case 'updateOrder':      return updateOrder(DB, p);
     case 'deleteOrder':      return deleteOrder(DB, p);
@@ -75,7 +76,27 @@ async function handle(DB, action, p) {
 }
 
 /* ---------- 讀取 ---------- */
+/* 輪詢用的「有沒有變動」指紋：只做 5 個聚合查詢，回傳一百多個 bytes。
+ * 前端每 10 秒打這支，指紋沒變就不抓整包 readAll（整包現在 300KB 以上，
+ * 每個分頁每 10 秒抓一次會把 Cloudflare Worker 的資源上限打爆，回 503 error code 1102）。
+ * 新增/刪除看 COUNT、修改看 MAX(更新時間)；vendor_progress / scraps 只會新增刪除，看 MAX(建立時間)。
+ */
+async function fingerprint(DB) {
+  const [vo, vp, pf, sc, st] = await Promise.all([
+    DB.prepare('SELECT COUNT(*) AS n, MAX("更新時間") AS t FROM vendor_orders').first(),
+    DB.prepare('SELECT COUNT(*) AS n, MAX("建立時間") AS t FROM vendor_progress').first(),
+    DB.prepare('SELECT COUNT(*) AS n, MAX("更新時間") AS t FROM platform_orders').first(),
+    DB.prepare('SELECT COUNT(*) AS n, MAX("建立時間") AS t FROM scraps').first(),
+    DB.prepare('SELECT COUNT(*) AS n FROM settings').first(),
+  ]);
+  const part = r => `${(r && r.n) || 0}:${(r && r.t) || ''}`;
+  return { fp: [part(vo), part(vp), part(pf), part(sc), `${(st && st.n) || 0}`].join('|') };
+}
+
 async function readAll(DB) {
+  // 先取指紋再讀資料：萬一中間有人寫入，指紋會「舊一點」，頂多下次輪詢多抓一次整包，
+  // 不會發生「指紋比資料新」而把那筆更新一直漏掉。
+  const { fp } = await fingerprint(DB);
   const [vo, vp, pf, sc, st] = await Promise.all([
     DB.prepare('SELECT * FROM vendor_orders').all(),
     DB.prepare('SELECT * FROM vendor_progress').all(),
@@ -101,7 +122,7 @@ async function readAll(DB) {
     if (!c || !v) return;
     (settings[c] = settings[c] || []).push(v);
   });
-  return { orders, progress: vp.results || [], platforms, scraps, settings };
+  return { orders, progress: vp.results || [], platforms, scraps, settings, fp };
 }
 
 /* ---------- 廠商單 ---------- */

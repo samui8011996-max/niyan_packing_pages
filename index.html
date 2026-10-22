@@ -1872,6 +1872,8 @@ let selectedColors = [];
 let vendorFilter = 'all';
 let vendorDate   = '';
 let pollTimer    = null;
+let lastFp       = null;   // 上一次整包同步到的資料指紋（輪詢用，見 pollTick）
+let pollTicks    = 0;
 let expandedVendorCards = new Set();
 let hisVendorPage = 1;
 let hisPfPage     = 1;
@@ -1986,7 +1988,7 @@ function hydrateShippingCache() {
     return true;
   } catch(_) { return false; }
 }
-async function loadAll() {
+async function loadAll(quiet = false) {
   if (!API_URL) return;
   const mySeq = ++loadSeq;
   try {
@@ -1997,6 +1999,7 @@ async function loadAll() {
     state.platforms = main.platforms || [];
     state.scraps    = main.scraps    || [];
     state.settings  = main.settings  || {};
+    lastFp = main.fp || null;
     renderAll();
     saveShippingCache(); 
     setSyncStatus(true);   // ←
@@ -2004,7 +2007,29 @@ async function loadAll() {
   } catch (e) {
     console.error(e);
     setSyncStatus(false);  // ←
-    toast('同步失敗：' + e.message, true);
+    // 背景輪詢失敗不跳 toast，左上角的 OFFLINE 燈號就夠了；
+    // 開畫面、按「↻ 更新」這種使用者自己觸發的才需要跳出來講。
+    if (!quiet) toast('同步失敗：' + e.message, true);
+  }
+}
+
+/* 輪詢：先問一個很小的「指紋」，沒變動就不抓整包。
+ * 以前是每 10 秒直接抓整包 readAll（300KB 以上），分頁開著沒看也照抓，
+ * 幾個人同時開就把 Cloudflare Worker 的資源上限打爆 → HTTP 503 (error code 1102)。
+ */
+async function pollTick() {
+  if (document.hidden) return;              // 分頁切走就不要再抓
+  try {
+    // 每 30 次（約 5 分鐘）不管指紋都整包抓一次當保險
+    const force = (++pollTicks % 30 === 0);
+    if (!force) {
+      const r = await api('fingerprint');
+      if (r && r.fp && r.fp === lastFp) { setSyncStatus(true); return; }
+    }
+    await loadAll(true);
+  } catch (e) {
+    console.error(e);
+    setSyncStatus(false);
   }
 }
 
@@ -5496,7 +5521,8 @@ resetPlatformForm();
 resetScrapForm();
 hydrateShippingCache();
 loadAll();
-pollTimer = setInterval(loadAll, 10000);
+pollTimer = setInterval(pollTick, 10000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) pollTick(); });
  document.getElementById('manualRefresh').addEventListener('click', async () => {
   const btn = document.getElementById('manualRefresh');
   btn.textContent = '同步中…';
