@@ -193,6 +193,11 @@ async function updatePlatform(DB, p) {
     if (has(p, c)) { sets.push(`"${c}"=?`); vals.push(p[c]); }
   }
   if (has(p, '明細')) { sets.push('"明細"=?'); vals.push(Array.isArray(p['明細']) ? JSON.stringify(p['明細']) : p['明細']); }
+  // 撿貨明細 / 注意明細 平常是出貨小幫手寫的,畫面上只讀;開放這裡更新是為了能修掉
+  // 測試或誤上傳留下來的資料(送空陣列就是清空),不是給日常編輯用的
+  for (const c of ['撿貨明細', '注意明細']) {
+    if (has(p, c)) { sets.push(`"${c}"=?`); vals.push(Array.isArray(p[c]) ? JSON.stringify(p[c]) : p[c]); }
+  }
   if (has(p, '已完成')) { sets.push('"已完成"=?'); vals.push(p['已完成'] ? 'TRUE' : ''); }
   sets.push('"更新時間"=?'); vals.push(now());
   vals.push(p.id);
