@@ -113,6 +113,9 @@ async function readAll(DB) {
     '明細': jparse(x['明細']),
     // 出貨小幫手寫進來的撿貨分組,前端點字卡時顯示(唯讀)
     '撿貨明細': jparse(x['撿貨明細']),
+    // 注意品項逐筆清單(2026-10-22 起,出貨小幫手不再寫試算表,改送這裡)
+    // 舊資料庫還沒有這一欄 → jparse(undefined) 回空陣列,不會壞
+    '注意明細': jparse(x['注意明細']),
   }));
   const scraps = (sc.results || []).map(x => ({ ...x, '明細': jparse(x['明細']) }));
   const settings = {};

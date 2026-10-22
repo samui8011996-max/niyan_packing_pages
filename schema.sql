@@ -43,7 +43,8 @@ CREATE TABLE platform_orders (
   "完成物流" TEXT,
   -- 出貨小幫手上傳 Line禮物件數時一起寫進來的撿貨分組(分區列印算的),
   -- JSON: [{"品項":"胖胖貓(小 金運)","件數":12}, ...]。點字卡可以看,只讀不編輯
-  "撿貨明細" TEXT
+  "撿貨明細" TEXT,
+  "注意明細" TEXT
 );
 
 DROP TABLE IF EXISTS scraps;

@@ -38,7 +38,8 @@
     --tape-purple: #ccc1de;
     --tape-cream: #f3e6c4;
 
-    --stamp-red: #c8554a;
+    --attn: #c2691a;
+  --stamp-red: #c8554a;
     --stamp-blue: #4a6f8a;
 
     --c-yellow: #f0d98a;
@@ -664,6 +665,7 @@ html, body {
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     gap: 14px;
   }
+.pf-line.pf-attn { color: var(--attn); font-weight: 700; border-top: 1px dotted var(--line); margin-top: 2px; padding-top: 3px; }
 .pf-card {
   background: var(--paper);
   border: 1px solid var(--line);
@@ -2462,6 +2464,10 @@ function renderPlatformBoard() {
         </div>
       `;
     }
+      const notice = Array.isArray(rec['注意明細']) ? rec['注意明細'] : [];
+      const noticeLine = notice.length
+        ? `<div class="pf-line pf-attn"><span>⚠ 注意品項</span><b>${notice.length}</b></div>`
+        : '';
       const detail = rec['明細'] || [];
       let detailHtml = '';
       if (Array.isArray(detail) && detail.length) {
@@ -2502,7 +2508,7 @@ function renderPlatformBoard() {
           
           <div class="pf-platform"><span>${name}</span></div>
           ${summaryHtml}
-          <div class="pf-details">${detailHtml}${dedHtml}</div>
+          <div class="pf-details">${detailHtml}${dedHtml}${noticeLine}</div>
          ${note ? `<div style="font-family:'Noto Sans TC','Noto Serif TC',serif;font-size:12px;color:var(--stamp-red);border-top:1px dotted var(--line);padding-top:6px;margin-bottom:6px;">📝 ${escapeHtml(note)}</div>` : ''}
         <div class="pf-actions">
 ${isDone(rec['已完成'])
@@ -5357,6 +5363,24 @@ function openPlatformEdit(rec, platformName, overrideDate) {
   // 這裡只給看不給改 —— 要改是去改出貨小幫手那邊的判斷,不是在這裡手動修數字。
   const picking = (!isNew && Array.isArray(rec['撿貨明細'])) ? rec['撿貨明細'] : [];
   const pickingTotal = picking.reduce((sum, d) => sum + (Number(d['件數']) || 0), 0);
+
+  // 注意品項:出貨小幫手 2026-10-22 起不寫試算表了,改成跟件數一起送過來。
+  // 只有訂單編號 + 品項 + 件數,沒有姓名地址電話。用橘色標出來,包貨時一眼看到要注意哪幾張。
+  const notice = (!isNew && Array.isArray(rec['注意明細'])) ? rec['注意明細'] : [];
+  const noticeDate = fmtDate(rec && rec['日期']) || '';
+  const noticeHtml = notice.length ? `
+      <div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--line);">
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px;">
+          <span style="font-family:'Noto Serif TC',serif;font-size:12px;color:var(--attn);font-weight:700;">⚠ 注意品項</span>
+          <span style="font-size:11px;color:var(--ink-soft);opacity:.7;">${notice.length} 筆</span>
+        </div>
+        ${notice.map(d => `
+          <div style="display:grid;grid-template-columns:auto 1fr auto;gap:8px;font-size:12px;line-height:1.8;color:var(--attn);">
+            <span style="font-size:11px;opacity:.75;white-space:nowrap;">${escapeHtml(noticeDate.slice(5))}</span>
+            <span style="min-width:0;overflow-wrap:anywhere;">${escapeHtml(String(d['訂單編號'] || ''))}<br>${escapeHtml(String(d['品項'] || ''))}</span>
+            <b style="flex:0 0 auto;">x${Number(d['件數']) || 1}</b>
+          </div>`).join('')}
+      </div>` : '';
   const pickingHtml = picking.length ? `
     <div id="pfmPicking" style="margin-top:14px;padding:8px 10px;background:var(--paper-2);border-radius:8px;">
       <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px;">
@@ -5368,7 +5392,8 @@ function openPlatformEdit(rec, platformName, overrideDate) {
           <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(String(d['品項'] || ''))}</span>
           <b style="flex:0 0 auto;">${Number(d['件數']) || 0}</b>
         </div>`).join('')}
-    </div>` : '';
+      ${noticeHtml}
+    </div>` : noticeHtml ? `<div id="pfmPicking" style="margin-top:14px;padding:8px 10px;background:var(--paper-2);border-radius:8px;">${noticeHtml}</div>` : '';
 
   $('#pfmBody').innerHTML = `
     <div class="form-grid">${detailHtml}</div>
