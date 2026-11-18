@@ -2019,8 +2019,15 @@ async function loadAll(quiet = false) {
  * 以前是每 10 秒直接抓整包 readAll（300KB 以上），分頁開著沒看也照抓，
  * 幾個人同時開就把 Cloudflare Worker 的資源上限打爆 → HTTP 503 (error code 1102)。
  */
+/* 下班時間（台灣時間 19:00 ~ 隔天 06:00）不自動輪詢，省 D1 讀取額度。
+ * 這段時間打開網頁、按「↻ 更新」、自己新增修改都照常，只是別人改的不會自動跳出來。 */
+function isOffHours() {
+  const h = new Date(Date.now() + 8 * 3600 * 1000).getUTCHours();
+  return h >= 19 || h < 6;
+}
 async function pollTick() {
   if (document.hidden) return;              // 分頁切走就不要再抓
+  if (isOffHours()) return;                 // 下班時間不輪詢
   try {
     // 每 30 次（約 5 分鐘）不管指紋都整包抓一次當保險
     const force = (++pollTicks % 30 === 0);

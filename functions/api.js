@@ -23,6 +23,8 @@ export async function onRequestPost(context) {
   const payload = body.payload || {};
   try {
     const data = await handle(env.DB, action, payload);
+    // 只要是寫入（新增/修改/刪除）成功，就把版本號 +1，讓其他分頁的輪詢知道要重抓
+    if (!READ_ACTIONS.has(action)) await bumpVersion(env.DB);
     return json({ ok: true, data });
   } catch (err) {
     return json({ ok: false, error: err.message });
@@ -76,12 +78,41 @@ async function handle(DB, action, p) {
 }
 
 /* ---------- 讀取 ---------- */
-/* 輪詢用的「有沒有變動」指紋：只做 5 個聚合查詢，回傳一百多個 bytes。
- * 前端每 10 秒打這支，指紋沒變就不抓整包 readAll（整包現在 300KB 以上，
- * 每個分頁每 10 秒抓一次會把 Cloudflare Worker 的資源上限打爆，回 503 error code 1102）。
- * 新增/刪除看 COUNT、修改看 MAX(更新時間)；vendor_progress / scraps 只會新增刪除，看 MAX(建立時間)。
+/* 輪詢用的「有沒有變動」指紋 = app_version 表裡 packing 的版本號，只讀 1 列。
+ * 前端每 10 秒打這支，指紋沒變就不抓整包 readAll。
+ *
+ * 2026-11-17 踩到：原本的指紋是 5 張表的 COUNT(*) / MAX(時間)，欄位沒索引，
+ * 每問一次就掃過全部約 1,100 列；D1 免費額度算的是「掃過幾列」(每天 500 萬)，
+ * 幾台電腦開著每 10 秒問一次就把整個帳號的額度用光，所有 App 一起被擋。
+ * 改成：每次寫入把版本號 +1（見 bumpVersion），輪詢只看這一個數字。
+ * 出貨小幫手(niyan_shipping)寫 platform_orders 時也會把 packing 版本號 +1。
  */
+const READ_ACTIONS = new Set(['readAll', 'fingerprint']);
+const VERSION_APP = 'packing';
+
+async function bumpVersion(DB) {
+  try {
+    await DB.prepare(
+      'INSERT INTO app_version (app, v) VALUES (?, 1) ON CONFLICT(app) DO UPDATE SET v = v + 1'
+    ).bind(VERSION_APP).run();
+  } catch (e) {
+    // 版本號沒更新到不影響寫入本身；前端每 5 分鐘還有一次保險整包重抓
+    console.error('bumpVersion failed', e);
+  }
+}
+
 async function fingerprint(DB) {
+  try {
+    const r = await DB.prepare('SELECT v FROM app_version WHERE app = ?').bind(VERSION_APP).first();
+    if (r) return { fp: 'v' + r.v };
+  } catch (e) {
+    console.error('app_version read failed, fallback to table scan', e);
+  }
+  return legacyFingerprint(DB);
+}
+
+// 舊版指紋（掃全表，很貴）：只在 app_version 表不存在/讀不到時當備援
+async function legacyFingerprint(DB) {
   const [vo, vp, pf, sc, st] = await Promise.all([
     DB.prepare('SELECT COUNT(*) AS n, MAX("更新時間") AS t FROM vendor_orders').first(),
     DB.prepare('SELECT COUNT(*) AS n, MAX("建立時間") AS t FROM vendor_progress').first(),
